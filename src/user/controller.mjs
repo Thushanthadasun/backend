@@ -505,7 +505,25 @@ export const emailVerify = async (req, res) => {
     }
 
     await pool.query("UPDATE users SET isemailverified = $1 WHERE email = $2", [true, emailadd.email]);
-    res.status(200).json({ message: "Email verified" });
+    
+    // Return HTML that redirects to your app
+    res.status(200).send(`
+      <html>
+        <head>
+          <title>Email Verified</title>
+          <meta http-equiv="refresh" content="3;url=yourapp://emailverified">
+        </head>
+        <body>
+          <h2>✅ Email verified successfully!</h2>
+          <p>You can now close this browser and return to the app.</p>
+          <script>
+            setTimeout(() => {
+              window.close();
+            }, 3000);
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error("Error in emailVerify:", error.message, error.stack);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
@@ -545,11 +563,11 @@ const sendVerificationEmail = async (email) => {
 
         Thank you for registering with Auto Lanka Services. To complete your registration and activate your account, please verify your email address by clicking the button below:
 
-        <a href="${process.env.CLIENT_URL}/emailactivation?token=${token}">Click here to verify</a>
+        <a href="${process.env.CLIENT_URL}/emailverify?token=${token}">Click here to verify</a>
 
         If the button doesn't work, you can also copy and paste the following link into your browser:
 
-        ${process.env.CLIENT_URL}/emailactivation?token=${token}
+        ${process.env.CLIENT_URL}/emailverify?token=${token}
 
         This email was sent by Auto Lanka Services. If you didn't create an account, you can safely ignore this email.
       `
@@ -942,9 +960,198 @@ export const confirmPasswordReset = async (req, res) => {
     // Update password in database
     await pool.query("UPDATE users SET password = $1 WHERE email = $2", [password, email]);
     
-    res.status(200).json({ message: "Password updated successfully" });
+    // Return HTML that redirects to your app
+    res.status(200).send(`
+      <html>
+        <head>
+          <title>Password Reset Confirmed</title>
+          <meta http-equiv="refresh" content="3;url=yourapp://passwordreset">
+        </head>
+        <body>
+          <h2>✅ Password reset successfully!</h2>
+          <p>You can now close this browser and return to the app to login with your new password.</p>
+          <script>
+            setTimeout(() => {
+              window.close();
+            }, 3000);
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error("Error in confirmPasswordReset:", error.message, error.stack);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
+export const updateEmail = async (req, res) => {
+  try {
+    const { email: newEmail } = req.body;
+    const token = req.headers.authorization?.split(" ")[1];
+    
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+    
+    if (!newEmail || !newEmail.includes('@')) {
+      return res.status(400).json({ message: "Valid email is required" });
+    }
+
+    const decodedToken = verifyToken(token);
+    if (!decodedToken) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    // Check if email already exists
+    const emailExists = await pool.query("SELECT * FROM users WHERE email = $1", [newEmail]);
+    if (emailExists.rows.length > 0) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+
+    // Send verification email for email change
+    const changeToken = tokenGen({ oldEmail: decodedToken.email, newEmail, userID: decodedToken.userID });
+    await sendEmailChangeVerification(newEmail, changeToken);
+
+    res.status(200).json({ message: "Verification email sent" });
+  } catch (error) {
+    console.error("Error in updateEmail:", error.message, error.stack);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
+export const updateContact = async (req, res) => {
+  try {
+    const { mobile: newMobile } = req.body;
+    const token = req.headers.authorization?.split(" ")[1];
+    
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+    
+    if (!newMobile) {
+      return res.status(400).json({ message: "Mobile number is required" });
+    }
+
+    const decodedToken = verifyToken(token);
+    if (!decodedToken) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    // Check if mobile already exists
+    const mobileExists = await pool.query("SELECT * FROM mobile_number WHERE mobile_no = $1 AND isotpverified = true", [newMobile]);
+    if (mobileExists.rows.length > 0) {
+      return res.status(400).json({ message: "Mobile number already exists" });
+    }
+
+    // Update mobile number directly
+    const userResult = await pool.query("SELECT mobile_id FROM users WHERE user_id = $1", [decodedToken.userID]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const mobileId = userResult.rows[0].mobile_id;
+    await pool.query("UPDATE mobile_number SET mobile_no = $1 WHERE mobile_id = $2", [newMobile, mobileId]);
+
+    res.status(200).json({ message: "Mobile number updated successfully" });
+  } catch (error) {
+    console.error("Error in updateContact:", error.message, error.stack);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
+const sendEmailChangeVerification = async (newEmail, token) => {
+  try {
+    await sendEmail(
+      newEmail,
+      "Auto Lanka Services, Email Change Verification",
+      `
+        Auto Lanka Services Email Change Verification
+
+        Click the following link to verify your new email address:
+
+        <a href="${process.env.CLIENT_URL}/email-change-verify?token=${token}">Click here to verify email change</a>
+
+        If the button doesn't work, you can also copy and paste the following link into your browser:
+
+        ${process.env.CLIENT_URL}/email-change-verify?token=${token}
+
+        This email was sent by Auto Lanka Services.
+      `
+    );
+  } catch (error) {
+    console.error("Error in sendEmailChangeVerification:", error.message, error.stack);
+  }
+};
+
+export const verifyEmailChange = async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ message: "Token not found" });
+    }
+
+    const tokenData = verifyToken(token);
+    if (!tokenData) {
+      return res.status(400).json({ message: "Invalid token" });
+    }
+
+    const { newEmail, userID } = tokenData;
+    
+    // Update email in database
+    await pool.query("UPDATE users SET email = $1 WHERE user_id = $2", [newEmail, userID]);
+    
+    res.status(200).json({ message: "Email updated successfully" });
+  } catch (error) {
+    console.error("Error in verifyEmailChange:", error.message, error.stack);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
+  }
+};
+export const getProfileDetails = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Authorization header missing" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = verifyToken(token);
+
+    const result = await pool.query(
+      `SELECT 
+         u.first_name AS fname, 
+         u.last_name AS lname, 
+         u.email, 
+         m.mobile_no AS mobile, 
+         u.nicno,
+         a.address_line1,
+         a.address_line2,
+         a.address_line3
+       FROM users u
+       JOIN mobile_number m ON u.mobile_id = m.mobile_id
+       LEFT JOIN addresses a ON u.address_id = a.address_id
+       WHERE u.user_id = $1`,
+      [decoded.userID]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = result.rows[0];
+
+    res.status(200).json({
+      fname: user.fname || '',
+      lname: user.lname || '',
+      email: user.email || '',
+      mobile: user.mobile || '',
+      nicno: user.nicno || '',
+      address_line1: user.address_line1 || '',
+      address_line2: user.address_line2 || '',
+      address_line3: user.address_line3 || ''
+    });
+  } catch (error) {
+    console.error("Error in getProfileDetails:", error.message);
+    res.status(500).json({ message: "Failed to get profile details", error: error.message });
   }
 };
