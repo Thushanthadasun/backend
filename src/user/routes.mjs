@@ -20,7 +20,10 @@ import {
   loadCurrentServiceStatus,
   getUserProfile,
   updateVehicleImage,
-  resetPasswordDirect, confirmPasswordReset 
+  resetPasswordDirect, confirmPasswordReset, updateEmail,
+  updateContact,
+  verifyEmailChange,
+   getProfileDetails
 } from "./controller.mjs";
 import { upload } from "../middleware/upload.mjs"; // Changed to named import
 
@@ -55,5 +58,12 @@ userRouter.post("/book-service", bookService);
 userRouter.get("/loadServiceTypes", loadServiceTypes);
 userRouter.get("/maintenance-history", loadMaintenanceHistory);
 userRouter.get("/current-service-status", loadCurrentServiceStatus);
+
+// Profile Updates
+userRouter.post("/update-email", updateEmail);
+userRouter.post("/update-contact", updateContact);
+userRouter.get("/email-change-verify", verifyEmailChange);
+userRouter.get("/profile-details", getProfileDetails);
+
 
 export default userRouter;
