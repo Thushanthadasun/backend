@@ -119,6 +119,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' })); // Increased limit for mobile apps
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+app.use("/api/v1/payments", paymentsRouter);
 
 // Health check endpoint - useful for mobile app connectivity testing
 app.get('/health', (req, res) => {
