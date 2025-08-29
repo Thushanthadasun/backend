@@ -2,22 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.mjs",
+      "src": "index.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/server.mjs"
+      "dest": "/index.js"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "functions": {
-    "server.mjs": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }
